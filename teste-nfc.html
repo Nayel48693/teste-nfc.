@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teste NFC</title>
+<style>
+:root{--bg:#f6f6f4;--card:#fff;--tx:#1c1c1a;--mut:#6b6b66;--bd:#e2e2dd;--ok:#1a7f4b;--no:#c0392b;--ac:#2557d6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1f1f1d;--tx:#f0f0ec;--mut:#9a9a93;--bd:#33332f;--ok:#3ecf8e;--no:#ff6b5b;--ac:#7aa2ff}}
+:root[data-theme="dark"]{--bg:#141413;--card:#1f1f1d;--tx:#f0f0ec;--mut:#9a9a93;--bd:#33332f;--ok:#3ecf8e;--no:#ff6b5b;--ac:#7aa2ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin-inline:auto;padding:16px}
+h1{font-size:20px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.mut{color:var(--mut);font-size:14px}
+button{font:inherit;width:100%;padding:13px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);margin-top:8px}
+button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+#door{text-align:center;padding:22px 10px;border-radius:14px;border:2px solid var(--bd);background:var(--card);transition:.25s}
+#door .ico{font-size:52px}
+#door.open{border-color:var(--ok);color:var(--ok)}
+#door.deny{border-color:var(--no);color:var(--no)}
+#door b{display:block;font-size:20px}
+code{word-break:break-all}
+ul{padding-left:18px;margin:6px 0 0}
+li{margin:3px 0;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Teste NFC</h1>
+
+<div class="card"><div id="sup" class="mut">A verificar…</div></div>
+
+<div id="door"><div class="ico" id="ico">🔒</div><b id="st">Porta fechada</b><span class="mut" id="sub">Aproxima um cartão ou tag NFC</span></div>
+
+<div class="card">
+<button class="pri" id="scan">Ativar leitor</button>
+<div class="mut" style="margin-top:10px">Último ID lido:</div>
+<code id="last">—</code>
+<button id="auth" disabled>Autorizar este ID</button>
+<button id="clr">Limpar autorizados</button>
+<div class="mut" style="margin-top:10px">Autorizados: <span id="n">0</span></div>
+</div>
+
+<div class="card">
+<div class="mut">Escrever numa tag (NTAG) um texto de teste</div>
+<button id="wr">Escrever "porta-ok" na tag</button>
+</div>
+
+<div class="card"><div class="mut">Registo</div><ul id="log"></ul></div>
+
+<script>
+const $=id=>document.getElementById(id);
+let list=[];
+try{list=JSON.parse(localStorage.getItem('auth')||'[]')}catch(e){}
+function save(){try{localStorage.setItem('auth',JSON.stringify(list))}catch(e){}$('n').textContent=list.length}
+save();
+function log(t){const li=document.createElement('li');li.textContent=new Date().toLocaleTimeString('pt-PT')+' — '+t;$('log').prepend(li)}
+let last=null,timer;
+function door(ok,sub){
+  const d=$('door');d.className=ok?'open':'deny';
+  $('ico').textContent=ok?'🔓':'⛔';$('st').textContent=ok?'Porta aberta':'Acesso negado';$('sub').textContent=sub;
+  clearTimeout(timer);timer=setTimeout(()=>{d.className='';$('ico').textContent='🔒';$('st').textContent='Porta fechada';$('sub').textContent='Aproxima um cartão ou tag NFC'},3000);
+}
+if(!('NDEFReader' in window)){
+  $('sup').textContent='❌ Este browser não suporta Web NFC. Abre no Chrome para Android, com o NFC ligado.';
+  $('scan').disabled=true;$('wr').disabled=true;
+}else{
+  $('sup').textContent='✅ Web NFC disponível. Toca em "Ativar leitor".';
+}
+$('scan').onclick=async()=>{
+  try{
+    const r=new NDEFReader();await r.scan();
+    log('Leitor ativo');$('scan').textContent='Leitor ativo ✓';
+    r.onreadingerror=()=>{log('Tag detetada, mas não foi possível ler (formato não suportado)');door(false,'Formato não suportado')};
+    r.onreading=e=>{
+      last=e.serialNumber;$('last').textContent=last||'(sem ID)';$('auth').disabled=!last;
+      let txt='';for(const rec of e.message.records){if(rec.recordType==='text'){txt=new TextDecoder(rec.encoding||'utf-8').decode(rec.data)}}
+      log('Lido: '+last+(txt?' | texto: '+txt:''));
+      const ok=list.includes(last)||txt==='porta-ok';
+      door(ok,ok?(txt==='porta-ok'?'Texto válido':'ID autorizado'):'ID não autorizado');
+    };
+  }catch(err){log('Erro: '+err.message);$('sup').textContent='⚠️ '+err.message}
+};
+$('auth').onclick=()=>{if(last&&!list.includes(last)){list.push(last);save();log('Autorizado: '+last)}};
+$('clr').onclick=()=>{list=[];save();log('Autorizados limpos')};
+$('wr').onclick=async()=>{
+  try{log('Aproxima a tag para escrever…');await new NDEFReader().write('porta-ok');log('Escrito com sucesso')}
+  catch(err){log('Erro a escrever: '+err.message)}
+};
+</script>
+</body>
+</html>
